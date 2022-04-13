@@ -12,13 +12,22 @@
 using namespace BearSSL;
 
 char usbscancodes_1[] =
+{'0', '0', '0', '0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+ 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+ 'u', 'v', 'w', 'x', 'y', 'z', '1', '2', '3', '4', '5', '6',
+ '7', '8', '9', '0'};
+
+char usbscancodes_1shift[] =
 {'0', '0', '0', '0', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
  'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
  'U', 'V', 'W', 'X', 'Y', 'Z', '1', '2', '3', '4', '5', '6',
  '7', '8', '9', '0'};
 
+/* Start at scancode decimal 44 */
 char usbscancodes_2[] =
 {' ', '-', '=', '[', ']', '\\', ' ', ';', '\'', '`', ',', '.', '/'};
+char usbscancodes_2shift[] =
+{' ', '_', '+', '{', '}', '|', ' ', ':', '"', '~', '<', '>', '?'};
 
 char* cert = R"(-----BEGIN CERTIFICATE-----
 MIIDPDCCAiSgAwIBAgIUWNq6Ns3toNpcEDNzjgxkknmSrwMwDQYJKoZIhvcNAQELBQAwJzELMAkG
@@ -63,7 +72,7 @@ unsigned int user_id;
 unsigned int security_policy;
 
 
-#define ACCUM_SIZE 256
+#define ACCUM_SIZE 2048
 typedef struct input {
     char          accum[ACCUM_SIZE];
     unsigned int  index;
@@ -128,7 +137,7 @@ char input[256];
 void HIDSelector::ParseHIDData(USBHID *hid, uint8_t ep, bool is_rpt_id, uint8_t len, uint8_t *buf) {
     if (len && buf)  {
         if (buf[2] != 0) {
-            Serial.print(buf[2]);
+            Serial.printf("mod 0x%x scancode %u\n", buf[0], buf[2]);
             switch (buf[2]) {
             case 40: {
                 /* Newline, flush input */
@@ -139,13 +148,31 @@ void HIDSelector::ParseHIDData(USBHID *hid, uint8_t ep, bool is_rpt_id, uint8_t 
                 break;
             }
             default: {
-                if (buf[2] > 3 && buf[2] < 40) {
-                    accumulate_input(&in, usbscancodes_1[buf[2]]);
-                    //Serial.print(usbscancodes_1[buf[2]]);
-                } else if (buf[2] > 43 && buf[2] < 57) {
-                    accumulate_input(&in, usbscancodes_2[buf[2]-44]);
-                    //Serial.print(usbscancodes_2[buf[2]-44]);
+                /* Shift is held */
+                if (buf[0] == 2)
+                {
+                    if (buf[2] > 3 && buf[2] < 40) {
+                        accumulate_input(&in, usbscancodes_1shift[buf[2]]);
+                        //Serial.print(usbscancodes_1[buf[2]]);
+                    }
+                    else if (buf[2] > 43 && buf[2] < 57)
+                    {
+                        accumulate_input(&in, usbscancodes_2shift[buf[2]-44]);
+                    }
                 }
+                /* No modifiers held */
+                else
+                {
+                    if (buf[2] > 3 && buf[2] < 40) {
+                        accumulate_input(&in, usbscancodes_1[buf[2]]);
+                        //Serial.print(usbscancodes_1[buf[2]]);
+                    }
+                    else if (buf[2] > 43 && buf[2] < 57)
+                    {
+                        accumulate_input(&in, usbscancodes_2[buf[2]-44]);
+                    }
+                }
+
                 break;
             }
             }
