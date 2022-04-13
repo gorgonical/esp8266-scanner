@@ -11,6 +11,9 @@
 
 using namespace BearSSL;
 
+const char* x509_cert_start = "-----BEGIN CERTIFICATE-----";
+const char* x509_cert_end   = "-----END CERTIFICATE-----";
+
 char usbscancodes_1[] =
 {'0', '0', '0', '0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
  'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
@@ -73,6 +76,7 @@ unsigned int security_policy;
 
 
 #define ACCUM_SIZE 2048
+char input[ACCUM_SIZE]; /* Local buffer for input copy */
 typedef struct input {
     char          accum[ACCUM_SIZE];
     unsigned int  index;
@@ -125,19 +129,29 @@ void process_input(char* input)
         security_policy = atoi(input+1);
         Serial.printf("Setting security policy to %u\n", security_policy);
     }
+    /* Found an x509 cert */
+    else if (strncmp(x509_cert_start, input, strlen(x509_cert_start)) == 0)
+    {
+        unsigned int pem_len           = strlen(input);
+        char*        fixed_cert_pem    = (char*)calloc(pem_len*2, sizeof(char));
+        unsigned int cert_contents_len = pem_len - strlen(x509_cert_start) - strlen(x509_cert_end);
+
+        /* sprintf with format strings is awesome */
+        sprintf(fixed_cert_pem, "%s\n%.*s\n%s", x509_cert_start, cert_contents_len, input+strlen(x509_cert_start), x509_cert_end);
+
+        Serial.printf("Certificate read:\n%s\n", fixed_cert_pem);
+    }
     else
     {
         Serial.printf("Barcode scanned: %u.\n", atoi(input));
     }
 }
 
-char input[256];
-
 // Will be called for all HID data received from the USB interface
 void HIDSelector::ParseHIDData(USBHID *hid, uint8_t ep, bool is_rpt_id, uint8_t len, uint8_t *buf) {
     if (len && buf)  {
         if (buf[2] != 0) {
-            Serial.printf("mod 0x%x scancode %u\n", buf[0], buf[2]);
+            //Serial.printf("mod 0x%x scancode %u\n", buf[0], buf[2]);
             switch (buf[2]) {
             case 40: {
                 /* Newline, flush input */
