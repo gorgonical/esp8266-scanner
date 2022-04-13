@@ -1,13 +1,17 @@
 #include <hidcomposite.h>
 #include <usbhub.h>
 
+#pragma GCC diagnostic warning "-fpermissive"
+
 // Satisfy the IDE, which needs to see the include statment in the ino too.
 #ifdef dobogusinclude
 #include <spi4teensy3.h>
 #endif
 #include <SPI.h>
 
-#include <ESP8266WiFi.h>
+#include "scanner.h"
+#include "types.h"
+#include "bearssl_tools.h"
 
 using namespace BearSSL;
 
@@ -117,6 +121,33 @@ void flush_input(input_t* in, char* out)
     reset_input(in);
 }
 
+int cert_fun(char* cert_pem)
+{
+    unsigned int i = 0;
+    pem_object* pems = NULL;
+    size_t num_pems  = 0;
+    br_x509_pkey *pk = NULL;
+
+
+    pems = decode_pem(cert_pem, strlen(cert_pem), &num_pems);
+    for (i = 0; i < num_pems; i++)
+    {
+        Serial.printf("PEM: Name %s\n", pems[i].name);
+        br_x509_certificate     cert;
+        br_x509_decoder_context dc;
+        bvector                 vdn = VEC_INIT;
+
+        cert.data     = pems[i].data;
+        cert.data_len = pems[i].data_len;
+
+        br_x509_decoder_init(&dc, dn_append, &vdn, 0, 0);
+        br_x509_decoder_push(&dc, cert.data, cert.data_len);
+
+        pk = br_x509_decoder_get_pkey(&dc);
+    }
+}
+
+
 void process_input(char* input)
 {
     if (input[0] == 'U')
@@ -140,6 +171,7 @@ void process_input(char* input)
         sprintf(fixed_cert_pem, "%s\n%.*s\n%s", x509_cert_start, cert_contents_len, input+strlen(x509_cert_start), x509_cert_end);
 
         Serial.printf("Certificate read:\n%s\n", fixed_cert_pem);
+        cert_fun(fixed_cert_pem);
     }
     else
     {
