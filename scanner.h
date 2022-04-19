@@ -20,6 +20,9 @@ chunk_cart(cart_t* cart);
 int
 decrypt_cart(chunked_cart_t* out, enc_cart_t* cart, br_rsa_private_key* pkey);
 
+unsigned int
+encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pub);
+
 size_t
 read_encrypted_cart(char* filename, enc_cart_t* cart_p);
 

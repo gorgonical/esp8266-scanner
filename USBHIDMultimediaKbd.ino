@@ -1,5 +1,6 @@
 #include <hidcomposite.h>
 #include <usbhub.h>
+#include <ESP8266WiFi.h>
 
 #pragma GCC diagnostic warning "-fpermissive"
 
@@ -14,6 +15,8 @@
 #include "bearssl_tools.h"
 
 using namespace BearSSL;
+
+br_x509_pkey* pkey = NULL;
 
 const char* x509_cert_start = "-----BEGIN CERTIFICATE-----";
 const char* x509_cert_end   = "-----END CERTIFICATE-----";
@@ -75,9 +78,7 @@ bool HIDSelector::SelectInterface(uint8_t iface, uint8_t proto)
   return false;
 }
 
-unsigned int user_id;
-unsigned int security_policy;
-
+cart_t cart;
 
 #define ACCUM_SIZE 2048
 char input[ACCUM_SIZE]; /* Local buffer for input copy */
@@ -121,6 +122,11 @@ void flush_input(input_t* in, char* out)
     reset_input(in);
 }
 
+void flush_cart(cart_t* cart_p)
+{
+    memset(cart_p, 0, sizeof(cart_t));
+}
+
 int cert_fun(char* cert_pem)
 {
     unsigned int i = 0;
@@ -145,20 +151,88 @@ int cert_fun(char* cert_pem)
 
         pk = br_x509_decoder_get_pkey(&dc);
     }
+
+    pkey = pk;
 }
 
+const char* ssid    = "dummy";
+const char* passwd  = "password";
+
+const char* host    = "1.1.1.1";
+const uint16_t port = 13579;
+
+unsigned int send_cart(enc_cart_t* encrypted_cart)
+{
+    unsigned int ret     = 0;
+    size_t       written = 0;
+
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, passwd);
+
+    Serial.printf("Connecting to %s\n", ssid);
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
+    WiFiClient client;
+    if (!client.connect(host, port))
+    {
+        Serial.println("Couldn't connect to anonymizer\n");
+        ret = 1;
+        goto out;
+    }
+
+    if (client.connected())
+    {
+        written = client.write((uint8_t*)encrypted_cart, sizeof(enc_cart_t));
+
+        if (written != sizeof(enc_cart_t))
+        {
+            Serial.println("Couldn't write full encrypted cart\n");
+            ret = 2;
+            goto out;
+        }
+    }
+
+out:
+    client.stop();
+
+    return ret;
+}
+
+void finish_cart(cart_t* cart_p)
+{
+    chunked_cart_t* chunked_cart = chunk_cart(cart_p);
+    enc_cart_t encrypted_cart;
+    memset(&encrypted_cart, 0, sizeof(enc_cart_t));
+
+    if (pkey->key_type != BR_KEYTYPE_RSA)
+    {
+        Serial.printf("Public key is not an RSA key. Can't encrypt!\n");
+    }
+    else
+    {
+        encrypt_cart(&encrypted_cart, chunked_cart, &pkey->key.rsa);
+    }
+
+    /* Send the encrypted cart blob to the anonymizer */
+    send_cart(&encrypted_cart);
+}
 
 void process_input(char* input)
 {
     if (input[0] == 'U')
     {
-        user_id = atoi(input+1);
-        Serial.printf("Setting User ID to %u\n", user_id);
+        flush_cart(&cart);
+        cart.user_id = atoi(input+1);
+        Serial.printf("Resetting cart and setting User ID to %u\n", cart.user_id);
     }
     else if (input[0] == 'P')
     {
-        security_policy = atoi(input+1);
-        Serial.printf("Setting security policy to %u\n", security_policy);
+        cart.security_policy = atoi(input+1);
+        Serial.printf("Setting security policy to %u\n", cart.security_policy);
     }
     /* Found an x509 cert */
     else if (strncmp(x509_cert_start, input, strlen(x509_cert_start)) == 0)
@@ -172,6 +246,11 @@ void process_input(char* input)
 
         Serial.printf("Certificate read:\n%s\n", fixed_cert_pem);
         cert_fun(fixed_cert_pem);
+    }
+    /* Got finish indicator. */
+    else if (input[0] == 'F')
+    {
+        finish_cart(&cart);
     }
     else
     {

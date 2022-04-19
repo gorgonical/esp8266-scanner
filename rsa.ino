@@ -119,6 +119,29 @@ chunk_cart(cart_t* cart)
     return (chunked_cart_t*)cart;
 }
 
+unsigned int
+encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pubkey)
+{
+    unsigned int ret = 0;
+    unsigned int i   = 0;
+    /* Encrypt cart */
+    for (i = 0; i < CHUNKS_PER_CART; i++)
+    {
+        cart_chunk_t*      raw_chunk = &(in->chunks[i]);
+        encrypted_chunk_t* enc_chunk = &(out->chunks[i]);
+
+        memcpy(enc_chunk, raw_chunk, sizeof(cart_chunk_t));
+
+        if (!pub((unsigned char*)&(enc_chunk->buf), 128, pubkey))
+        {
+            printf("Could not encrypt chunk #%u\n", i);
+            ret |= 1;
+        }
+    }
+
+    return ret;
+}
+
 int
 decrypt_cart(chunked_cart_t* out, enc_cart_t* cart, br_rsa_private_key* pkey)
 {
@@ -273,19 +296,7 @@ dn_append(void *ctx, const void *buf, size_t len)
 //     printf("cart size chunked size %u %u\n", sizeof(cart_t), sizeof(chunked_cart_t));
 //     printf("chunks per cart %u\n", CHUNKS_PER_CART);
 
-//     /* Encrypt cart */
-//     for (i = 0; i < CHUNKS_PER_CART; i++)
-//     {
-//         cart_chunk_t*      raw_chunk = &(chunked->chunks[i]);
-//         encrypted_chunk_t* enc_chunk = &(encrypted_cart.chunks[i]);
 
-//         memcpy(enc_chunk, raw_chunk, sizeof(cart_chunk_t));
-
-//         if (!pub((unsigned char*)&(enc_chunk->buf), 128, &pk->key.rsa))
-//         {
-//             printf("Could not encrypt chunk #%u\n", i);
-//         }
-//     }
 
 //     for (i = 0; i < CHUNKS_PER_CART; i++)
 //     {
