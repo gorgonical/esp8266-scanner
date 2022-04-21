@@ -21,7 +21,7 @@ int
 decrypt_cart(chunked_cart_t* out, enc_cart_t* cart, br_rsa_private_key* pkey);
 
 unsigned int
-encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pub);
+encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pub, unsigned int chunk_number);
 
 size_t
 read_encrypted_cart(char* filename, enc_cart_t* cart_p);
@@ -31,5 +31,8 @@ write_encrypted_cart(char* filename, enc_cart_t* cart_p);
 
 static void
 dn_append(void *ctx, const void *buf, size_t len);
+
+void
+print_hex(void* data, unsigned int n);
 
 #endif /* _SCANNER_H */

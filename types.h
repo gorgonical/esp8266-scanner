@@ -6,9 +6,9 @@
 #define CHUNK_SIZE_BYTES 100
 
 typedef struct cart {
-    unsigned int user_id;
-    unsigned int security_policy;
-    unsigned int code[CART_SIZE];
+    unsigned int       user_id;
+    unsigned int       security_policy;
+    unsigned int       code[CART_SIZE];
 } cart_t;
 
 #define CHUNKS_PER_CART ( ( sizeof(cart_t) / CHUNK_SIZE_BYTES) )

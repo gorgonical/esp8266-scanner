@@ -66,7 +66,7 @@ xblobdup(const void *src, size_t len)
 char *
 xstrdup(const void *src)
 {
-	return xblobdup(src, strlen(src) + 1);
+    return (char*)xblobdup(src, strlen((const char*)src) + 1);
 }
 
 /* see brssl.h */
@@ -75,18 +75,18 @@ xpkeydup(const br_x509_pkey *pk)
 {
 	br_x509_pkey *pk2;
 
-	pk2 = xmalloc(sizeof *pk2);
+	pk2 = (br_x509_pkey*)xmalloc(sizeof *pk2);
 	pk2->key_type = pk->key_type;
 	switch (pk->key_type) {
 	case BR_KEYTYPE_RSA:
-		pk2->key.rsa.n = xblobdup(pk->key.rsa.n, pk->key.rsa.nlen);
+      pk2->key.rsa.n = (unsigned char*)xblobdup(pk->key.rsa.n, pk->key.rsa.nlen);
 		pk2->key.rsa.nlen = pk->key.rsa.nlen;
-		pk2->key.rsa.e = xblobdup(pk->key.rsa.e, pk->key.rsa.elen);
+		pk2->key.rsa.e = (unsigned char*)xblobdup(pk->key.rsa.e, pk->key.rsa.elen);
 		pk2->key.rsa.elen = pk->key.rsa.elen;
 		break;
 	case BR_KEYTYPE_EC:
 		pk2->key.ec.curve = pk->key.ec.curve;
-		pk2->key.ec.q = xblobdup(pk->key.ec.q, pk->key.ec.qlen);
+		pk2->key.ec.q = (unsigned char*)xblobdup(pk->key.ec.q, pk->key.ec.qlen);
 		pk2->key.ec.qlen = pk->key.ec.qlen;
 		break;
 	default:

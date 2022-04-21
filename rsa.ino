@@ -6,7 +6,9 @@
 #include "types.h"
 #include "bearssl_tools.h"
 
-br_rsa_public pub;
+#pragma GCC diagnostic warning "-fpermissive"
+
+br_rsa_public pub = br_rsa_public_get_default();
 br_rsa_private priv;
 br_pem_decoder_context pem_decoder;
 
@@ -16,7 +18,7 @@ vblob_append(void *cc, const void *data, size_t len)
     bvector *bv;
 
     bv = (bvector*)cc;
-    VEC_ADDMANY(*bv, (unsigned char*)data, len);
+    VEC_ADDMANY(*bv, (bvector*)data, len);
 }
 
 /* see brssl.h */
@@ -119,25 +121,41 @@ chunk_cart(cart_t* cart)
     return (chunked_cart_t*)cart;
 }
 
+void hw_wdt_disable(){
+  *((volatile uint32_t*) 0x60000900) &= ~(1); // Hardware WDT OFF
+}
+
+void hw_wdt_enable(){
+  *((volatile uint32_t*) 0x60000900) |= 1; // Hardware WDT ON
+}
+
 unsigned int
-encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pubkey)
+encrypt_cart(enc_cart_t* out, chunked_cart_t* in, br_rsa_public_key* pubkey, unsigned int chunk_number)
 {
     unsigned int ret = 0;
-    unsigned int i   = 0;
+    unsigned int i = 0;
     /* Encrypt cart */
-    for (i = 0; i < CHUNKS_PER_CART; i++)
-    {
-        cart_chunk_t*      raw_chunk = &(in->chunks[i]);
-        encrypted_chunk_t* enc_chunk = &(out->chunks[i]);
 
+
+//    for (i = 0; i < CHUNKS_PER_CART; i++)
+//    for (i = 0; i < 1; i++)
+    if (chunk_number < CHUNKS_PER_CART)
+    {
+//        cart_chunk_t*      raw_chunk = &(in->chunks[i]);
+//        encrypted_chunk_t* enc_chunk = &(out->chunks[i]);
+        cart_chunk_t*      raw_chunk = &(in->chunks[chunk_number]);
+        encrypted_chunk_t* enc_chunk = &(out->chunks[chunk_number]);
+
+        Serial.printf("Encrypting chunk %u\n", chunk_number);
         memcpy(enc_chunk, raw_chunk, sizeof(cart_chunk_t));
 
         if (!pub((unsigned char*)&(enc_chunk->buf), 128, pubkey))
         {
-            printf("Could not encrypt chunk #%u\n", i);
+            Serial.printf("Could not encrypt chunk #%u\n", chunk_number);
             ret |= 1;
         }
     }
+//    hw_wdt_enable();
 
     return ret;
 }
@@ -218,16 +236,16 @@ void
 print_hex(void* data, unsigned int n)
 {
     unsigned int i = 0;
-    unsigned char* byte = data;
+    unsigned char* byte = (unsigned char*)data;
     for (i = 0; i < n; i++, byte++)
     {
         if (i != 0 && i % 16 == 0)
         {
-            printf("\n");
+            Serial.printf("\n");
         }
-        printf("%02X", *byte);
+        Serial.printf("%02X", *byte);
     }
-    printf("\n\n");
+    Serial.printf("\n\n");
 }
 
 static void

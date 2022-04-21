@@ -108,8 +108,8 @@ void *xblobdup(const void *src, size_t len);
 /*
  * Add a value at the end of a vector.
  */
-#define VEC_ADD(vec, x)   do { \
-		(vec).buf = vector_expand((vec).buf, sizeof *((vec).buf), \
+#define VEC_ADD(vec, x)   do {																					\
+	(vec).buf = (typeof( (vec).buf ) )vector_expand((void*)(vec).buf, sizeof *((vec).buf), \
 			&(vec).ptr, &(vec).len, 1); \
 		(vec).buf[(vec).ptr ++] = (x); \
 	} while (0)
@@ -117,9 +117,9 @@ void *xblobdup(const void *src, size_t len);
 /*
  * Add several values at the end of a vector.
  */
-#define VEC_ADDMANY(vec, xp, num)   do { \
+#define VEC_ADDMANY(vec, xp, num)   do {				\
 		size_t vec_num = (num); \
-		(vec).buf = vector_expand((vec).buf, sizeof *((vec).buf), \
+		(vec).buf = (typeof( (vec).buf ) )vector_expand((void*)(vec).buf, sizeof *((vec).buf),	\
 			&(vec).ptr, &(vec).len, vec_num); \
 		memcpy((vec).buf + (vec).ptr, \
 			(xp), vec_num * sizeof *((vec).buf)); \
@@ -139,7 +139,7 @@ void *xblobdup(const void *src, size_t len);
 /*
  * Copy all vector elements into a newly allocated block.
  */
-#define VEC_TOARRAY(vec)    xblobdup((vec).buf, sizeof *((vec).buf) * (vec).ptr)
+#define VEC_TOARRAY(vec)    (typeof (vec).buf)xblobdup((vec).buf, sizeof *((vec).buf) * (vec).ptr)
 
 /*
  * Internal function used to handle memory allocations for vectors.
@@ -153,7 +153,7 @@ void *vector_expand(void *buf,
 typedef VECTOR(unsigned char) bvector;
 
 /*
- * Compare two strings for equality; returned value is 1 if the strings
+ * Compare two strings for equality; returned value is 1 if the stringsrst
  * are to be considered equal, 0 otherwise. Comparison is case-insensitive
  * (ASCII letters only) and skips some characters (all whitespace, defined
  * as ASCII codes 0 to 32 inclusive, and also '-', '_', '.', '/', '+' and

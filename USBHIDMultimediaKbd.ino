@@ -1,6 +1,7 @@
 #include <hidcomposite.h>
 #include <usbhub.h>
 #include <ESP8266WiFi.h>
+#include <stdlib.h>
 
 #pragma GCC diagnostic warning "-fpermissive"
 
@@ -13,10 +14,16 @@
 #include "scanner.h"
 #include "types.h"
 #include "bearssl_tools.h"
+#include "cert.h"
 
 using namespace BearSSL;
 
 br_x509_pkey* pkey = NULL;
+enc_cart_t*  encrypted_cart = NULL;
+unsigned int need_send;
+unsigned int need_encrypt;
+cart_t* cart = NULL;
+unsigned int cart_index;
 
 const char* x509_cert_start = "-----BEGIN CERTIFICATE-----";
 const char* x509_cert_end   = "-----END CERTIFICATE-----";
@@ -78,7 +85,6 @@ bool HIDSelector::SelectInterface(uint8_t iface, uint8_t proto)
   return false;
 }
 
-cart_t cart;
 
 #define ACCUM_SIZE 2048
 char input[ACCUM_SIZE]; /* Local buffer for input copy */
@@ -127,38 +133,36 @@ void flush_cart(cart_t* cart_p)
     memset(cart_p, 0, sizeof(cart_t));
 }
 
-int cert_fun(char* cert_pem)
-{
-    unsigned int i = 0;
-    pem_object* pems = NULL;
-    size_t num_pems  = 0;
-    br_x509_pkey *pk = NULL;
+// static inline void cert_fun(char* cert_pem)
+// {
+//     unsigned int i = 0;
+//     pem_object* pems = NULL;
+//     size_t num_pems  = 0;
 
 
-    pems = decode_pem(cert_pem, strlen(cert_pem), &num_pems);
-    for (i = 0; i < num_pems; i++)
-    {
-        Serial.printf("PEM: Name %s\n", pems[i].name);
-        br_x509_certificate     cert;
-        br_x509_decoder_context dc;
-        bvector                 vdn = VEC_INIT;
+//     pems = decode_pem(cert2, strlen(cert2), &num_pems);
+//     for (i = 0; i < num_pems; i++)
+//     {
+//         Serial.printf("PEM: Name %s\n", pems[i].name);
+//         br_x509_certificate     cert;
+//         br_x509_decoder_context dc;
+//         bvector                 vdn = VEC_INIT;
 
-        cert.data     = pems[i].data;
-        cert.data_len = pems[i].data_len;
+//         cert.data     = pems[i].data;
+//         cert.data_len = pems[i].data_len;
 
-        br_x509_decoder_init(&dc, dn_append, &vdn, 0, 0);
-        br_x509_decoder_push(&dc, cert.data, cert.data_len);
+//         br_x509_decoder_init(&dc, dn_append, &vdn, 0, 0);
+//         br_x509_decoder_push(&dc, cert.data, cert.data_len);
 
-        pk = br_x509_decoder_get_pkey(&dc);
-    }
+//         pkey = *(br_x509_decoder_get_pkey(&dc));
+//     }
 
-    pkey = pk;
-}
+// }
 
-const char* ssid    = "dummy";
-const char* passwd  = "password";
+const char* ssid    = "FiOS-9NQ0N";
+const char* passwd  = "wand7980toe0285wit";
 
-const char* host    = "1.1.1.1";
+const char* host    = "192.168.1.222";
 const uint16_t port = 13579;
 
 unsigned int send_cart(enc_cart_t* encrypted_cart)
@@ -166,24 +170,16 @@ unsigned int send_cart(enc_cart_t* encrypted_cart)
     unsigned int ret     = 0;
     size_t       written = 0;
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, passwd);
-
-    Serial.printf("Connecting to %s\n", ssid);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.print(".");
-    }
-
+    Serial.printf("Trying to connect to anonymizer\n");
     WiFiClient client;
     if (!client.connect(host, port))
     {
-        Serial.println("Couldn't connect to anonymizer\n");
+        Serial.printf("Couldn't connect to anonymizer\n");
         ret = 1;
         goto out;
     }
 
+    Serial.printf("Connected to anonymizer\n");
     if (client.connected())
     {
         written = client.write((uint8_t*)encrypted_cart, sizeof(enc_cart_t));
@@ -196,17 +192,44 @@ unsigned int send_cart(enc_cart_t* encrypted_cart)
         }
     }
 
+    need_send = 0;
+
 out:
     client.stop();
 
     return ret;
 }
 
-void finish_cart(cart_t* cart_p)
+void finish_cart(cart_t* cart_p, char* cert_pem)
 {
     chunked_cart_t* chunked_cart = chunk_cart(cart_p);
-    enc_cart_t encrypted_cart;
-    memset(&encrypted_cart, 0, sizeof(enc_cart_t));
+    //memset(encrypted_cart, 0, sizeof(enc_cart_t));
+
+    pem_object* pems = NULL;
+    size_t num_pems  = 0;
+
+    unsigned int i = 0;
+
+    pems = decode_pem(cert_pem, strlen(cert_pem), &num_pems);
+    for (i = 0; i < num_pems; i++)
+    {
+        printf("PEM: Name %s\n", pems[i].name);
+        br_x509_certificate     cert;
+        br_x509_decoder_context dc;
+        bvector                 vdn = VEC_INIT;
+
+        cert.data     = pems[i].data;
+        cert.data_len = pems[i].data_len;
+
+        br_x509_decoder_init(&dc, dn_append, &vdn, 0, 0);
+        br_x509_decoder_push(&dc, cert.data, cert.data_len);
+
+        *pkey = *(br_x509_decoder_get_pkey(&dc));
+    }
+    ESP.wdtFeed();
+
+    print_hex((void*)pkey, sizeof(br_x509_pkey));
+    ESP.wdtFeed();
 
     if (pkey->key_type != BR_KEYTYPE_RSA)
     {
@@ -214,25 +237,34 @@ void finish_cart(cart_t* cart_p)
     }
     else
     {
-        encrypt_cart(&encrypted_cart, chunked_cart, &pkey->key.rsa);
+        unsigned int i = 0;
+        Serial.printf("Encrypting cart...\n");
+//        hw_wdt_disable();
+        for (i = 0; i < CHUNKS_PER_CART; i++)
+        {
+            ESP.wdtFeed();
+            //encrypt_cart(encrypted_cart, chunk_cart(cart), &pkey->key.rsa, i);
+        }
+        //hw_wdt_enable();
+        Serial.printf("Fuck\n");
+        //      need_encrypt = 1;
+        //need_send = 1;
     }
-
-    /* Send the encrypted cart blob to the anonymizer */
-    send_cart(&encrypted_cart);
 }
 
 void process_input(char* input)
 {
-    if (input[0] == 'U')
+    if (input[0] == 'U' || input[0] == 'u')
     {
-        flush_cart(&cart);
-        cart.user_id = atoi(input+1);
-        Serial.printf("Resetting cart and setting User ID to %u\n", cart.user_id);
+        flush_cart(cart);
+        cart->user_id = atoi(input+1);
+        cart_index = 0;
+        Serial.printf("Resetting cart and setting User ID to %u\n", cart->user_id);
     }
-    else if (input[0] == 'P')
+    else if (input[0] == 'P' || input[0] == 'p')
     {
-        cart.security_policy = atoi(input+1);
-        Serial.printf("Setting security policy to %u\n", cart.security_policy);
+        cart->security_policy = atoi(input+1);
+        Serial.printf("Setting security policy to %u\n", cart->security_policy);
     }
     /* Found an x509 cert */
     else if (strncmp(x509_cert_start, input, strlen(x509_cert_start)) == 0)
@@ -245,17 +277,16 @@ void process_input(char* input)
         sprintf(fixed_cert_pem, "%s\n%.*s\n%s", x509_cert_start, cert_contents_len, input+strlen(x509_cert_start), x509_cert_end);
 
         Serial.printf("Certificate read:\n%s\n", fixed_cert_pem);
-        cert_fun(fixed_cert_pem);
-    }
-    /* Got finish indicator. */
-    else if (input[0] == 'F')
-    {
-        finish_cart(&cart);
+        finish_cart(cart, fixed_cert_pem);
+        Serial.printf("Done\n");
     }
     else
     {
-        Serial.printf("Barcode scanned: %u.\n", atoi(input));
+        Serial.printf("Barcode scanned: %s\n", input);
+        cart->code[cart_index++] = atol(input);
+        //sprintf(cart.code[cart_index++], "%s", atol(input));
     }
+    Serial.printf("Leaving processing\n");
 }
 
 // Will be called for all HID data received from the USB interface
@@ -270,6 +301,7 @@ void HIDSelector::ParseHIDData(USBHID *hid, uint8_t ep, bool is_rpt_id, uint8_t 
                 Serial.printf("%s\n", (char*)&in.accum);
                 flush_input(&in, input);
                 process_input(input);
+                Serial.printf("Leaving switch\n");
                 break;
             }
             default: {
@@ -323,10 +355,48 @@ void setup()
   // minimum 0x00, maximum 0xff, default 0x80
   UsbDEBUGlvl = 0xff;
 
+  need_send    = 0;
+  need_encrypt = 0;
+  encrypted_cart = calloc(1, sizeof(enc_cart_t));
+  cart           = calloc(1, sizeof(cart_t));
+  pkey           = calloc(1, sizeof(br_x509_pkey));
+
+  // WiFi.mode(WIFI_STA);
+  // WiFi.begin(ssid, passwd);
+
+  // Serial.printf("Connecting to %s\n", ssid);
+  // while (WiFi.status() != WL_CONNECTED)
+  // {
+  //     delay(500);
+  //     Serial.print(".");
+  // }
+
+  // Serial.print("Connected with IP address: ");
+  // Serial.println(WiFi.localIP());
+
   delay( 200 );
 }
 
+unsigned int chunk_num = 0;
+
 void loop()
 {
+    Serial.printf("Entering task\n");
   Usb.Task();
+  Serial.printf("Leaving task\n");
+  // if (need_encrypt)
+  // {
+  //     memset(encrypted_cart, 0, sizeof(enc_cart_t));
+  //     print_hex((void*)pkey, sizeof(br_x509_pkey));
+  //     encrypt_cart(encrypted_cart, chunk_cart(cart), &pkey->key.rsa, chunk_num);
+  //     chunk_num += 1;
+  //     if (chunk_num == CHUNKS_PER_CART)
+  //     {
+  //         need_encrypt = 0;
+  //     }
+  // }
+  // if (need_send)
+  // {
+  //     send_cart(encrypted_cart);
+  // }
 }
